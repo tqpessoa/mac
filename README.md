@@ -5,7 +5,7 @@ Parte 1 (Usando a VM)
 
 
 Ativando o controlador:
-sudo ~/pox/pox.py forwarding.l2_learning openflow.spanning_tree --no-flood --hold-down log.level --DEBUG samples.pretty_log openflow.discovery host_tracker info.packet_dump      
+sudo ~/pox/pox.py l2_mac openflow.spanning_tree --no-flood --hold-down log.level --DEBUG samples.pretty_log openflow.discovery host_tracker info.packet_dump      
 
 
 Parte 2 (Usando SSH):
