@@ -28,7 +28,7 @@ log = core.getLogger()
 
 _flood_delay = 0
 
-policyFile = "%s/pox/pox/misc/csvfirewall.csv"  % os.environ[ 'HOME' ]
+policyFile = "%s/pox/pox/misc/firewall.csv"  % os.environ[ 'HOME' ]
 
 ''' Importa lista de MAC Cadastrados '''
 
