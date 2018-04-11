@@ -14,7 +14,6 @@
 # limitations under the License.
 
 # Alterado: Talles Quintão
-
 from pox.core import core
 import pox.openflow.libopenflow_01 as of
 from pox.lib.util import dpid_to_str
@@ -78,12 +77,12 @@ class LearningSwitch (object):
     #          str(self.transparent))
 
 
-  #Função que permite adicionar regras de firewall na tabela de firewall
+  #permite adicionar regras de firewall na tabela de firewall
   def AddRule (self, dpidstr, src=0,value=True):
     self.firewall[(dpidstr,src)]=value
     log.debug("Adding firewall rule in %s: %s", dpidstr, src) 
 
-  #Função que permite excluir regras de firewall da tabela de firewall
+  # permite excluir regras de firewall da tabela de firewall
   def DeleteRule (self, dpidstr, src=0):
      try:
        del self.firewall[(dpidstr,src)]
@@ -221,4 +220,4 @@ def launch (transparent=False, hold_down=_flood_delay):
   except:
     raise RuntimeError("Expected hold-down to be a number")
 
-  core.registerNew(l2_learning, str_to_bool(transparent))
+core.registerNew(l2_learning, str_to_bool(transparent))
