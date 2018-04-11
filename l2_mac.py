@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# Copyright 2013-2015 Nick Feamster
 # Based on l2_learning.py by James McCauley
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,77 +13,97 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+# Editado por Talles
 
-# Alterado: Talles Quintão
+"""
+An L2 learning switch.
+It is derived from one written live for an SDN crash course.
+It is somwhat similar to NOX's pyswitch in that it installs
+exact-match rules for each flow.
+"""
+
 from pox.core import core
 import pox.openflow.libopenflow_01 as of
 from pox.lib.util import dpid_to_str
 from pox.lib.util import str_to_bool
 import time
+
 from pox.lib.addresses import EthAddr
-from pox.lib.addresses import IPAddr
-from collections import namedtuple
-import os
 
 log = core.getLogger()
 
+# We don't want to flood immediately when a switch connects.
+# Can be overriden on commandline.
 _flood_delay = 0
 
-policyFile = "%s/pox/pox/misc/firewall.csv"  % os.environ[ 'HOME' ]
-
-''' Importa lista de MAC Cadastrados '''
-
-#busca macs cadastrados
-
-allowmacs = []
-fp = open(policyFile)
-line = fp.readline() #ignore first line
-line = fp.readline()
-while line:
-    item = line.split(',')
-    item[0] = int(item[0])
-    item[2] = item[2].strip() #remove white space
-    allowmacs.append(item)
-    print item[0], item[1], item[2]
-    line = fp.readline()
-fp.close()
-
-
 class LearningSwitch (object):
- 
+  """
+  The learning switch "brain" associated with a single OpenFlow switch.
+  When we see a packet, we'd like to output it on a port which will
+  eventually lead to the destination.  To accomplish this, we build a
+  table that maps addresses to ports.
+  We populate the table by observing traffic.  When we see a packet
+  from some source coming from some port, we know that source is out
+  that port.
+  When we want to forward traffic, we look up the desintation in our
+  table.  If we don't know the port, we simply send the message out
+  all ports except the one it came in on.  (In the presence of loops,
+  this is bad!).
+  In short, our algorithm looks like this:
+  For each packet from the switch:
+  1) Use source address and switch port to update address/port table
+  2) Is transparent = False and either Ethertype is LLDP or the packet's
+     destination address is a Bridge Filtered address?
+     Yes:
+        2a) Drop packet -- don't forward link-local traffic (LLDP, 802.1x)
+            DONE
+  3) Is destination multicast?
+     Yes:
+        3a) Flood the packet
+            DONE
+  4) Port for destination address in our address/port table?
+     No:
+        4a) Flood the packet
+            DONE
+  5) Is output port the same as input port?
+     Yes:
+        5a) Drop packet and similar ones for a while
+  6) Install flow table entry in the switch so that this
+     flow goes out the appopriate port
+     6a) Send the packet out appropriate port
+  """
   def __init__ (self, connection, transparent):
     # Switch we'll be adding L2 learning switch capabilities to
     self.connection = connection
     self.transparent = transparent
 
-    # Tabela Mac
+    # Our table
     self.macToPort = {}
 
-    # Tabela Firewall
+    # Our firewall table
     self.firewall = {}
 
-    # Adiciona Regras 
-   
-    for item in allowmacs:
-            print item[1]
-            print item[2]
-	    self.AddRule((item[1]),EthAddr(item[2]))	 
-   log.debug("Firewall - Regras instaladas")
-   
-    # Ouvir mensagens de entrada
+    # Add a Couple of Rules
+    self.AddRule('00-00-00-00-00-01',EthAddr('00:00:00:00:00:01'))
+    self.AddRule('00-00-00-00-00-01',EthAddr('00:00:00:00:00:02'))
+
+    # We want to hear PacketIn messages, so we listen
+    # to the connection
     connection.addListeners(self)
+
+    # We just use this to know when to log a helpful message
     self.hold_down_expired = _flood_delay == 0
 
     #log.debug("Initializing LearningSwitch, transparent=%s",
     #          str(self.transparent))
 
 
-  #permite adicionar regras de firewall na tabela de firewall
+  # function that allows adding firewall rules into the firewall table
   def AddRule (self, dpidstr, src=0,value=True):
     self.firewall[(dpidstr,src)]=value
     log.debug("Adding firewall rule in %s: %s", dpidstr, src) 
 
-  # permite excluir regras de firewall da tabela de firewall
+  # function that allows deleting firewall rules from the firewall table
   def DeleteRule (self, dpidstr, src=0):
      try:
        del self.firewall[(dpidstr,src)]
@@ -93,7 +114,7 @@ class LearningSwitch (object):
                  dpidstr, src)
 
 
-  # Verificar se o pacote está em conformidade com as regras antes de prosseguir
+  # check if packet is compliant to rules before proceeding
   def CheckRule (self, dpidstr, src=0):
     try:
       entry = self.firewall[(dpidstr, src)]
@@ -111,7 +132,7 @@ class LearningSwitch (object):
 
   def _handle_PacketIn (self, event):
     """
-    Manipular o pacote em mensagens do switch para implementar o algoritmo acima
+    Handle packet in messages from the switch to implement above algorithm.
     """
 
     packet = event.parsed
@@ -120,26 +141,30 @@ class LearningSwitch (object):
       """ Floods the packet """
       msg = of.ofp_packet_out()
       if time.time() - self.connection.connect_time >= _flood_delay:
-        
+        # Only flood if we've been connected for a little while...
 
         if self.hold_down_expired is False:
-         
+          # Oh yes it is!
           self.hold_down_expired = True
           log.info("%s: Flood hold-down expired -- flooding",
               dpid_to_str(event.dpid))
 
         if message is not None: log.debug(message)
+        #log.debug("%i: flood %s -> %s", event.dpid,packet.src,packet.dst)
+        # OFPP_FLOOD is optional; on some switches you may need to change
+        # this to OFPP_ALL.
         msg.actions.append(of.ofp_action_output(port = of.OFPP_FLOOD))
       else:
         pass
+        #log.info("Holding down flood for %s", dpid_to_str(event.dpid))
       msg.data = event.ofp
       msg.in_port = event.port
       self.connection.send(msg)
 
     def drop (duration = None):
       """
-      Drops este pacote e, opcionalmente, instala um fluxo para continuar
-      dropping similares por um tempo
+      Drops this packet and optionally installs a flow to continue
+      dropping similar ones for a while
       """
       if duration is not None:
         if not isinstance(duration, tuple):
@@ -158,10 +183,10 @@ class LearningSwitch (object):
 
     self.macToPort[packet.src] = event.port # 1
 
-    # Obter o DPID da Switch Connection
+    # Get the DPID of the Switch Connection
     dpidstr = dpid_to_str(event.connection.dpid)
 
-    # Regras Firewall
+    # Check the Firewall Rules
     if self.CheckRule(dpidstr, packet.src) == False:
       drop()
       return
@@ -198,7 +223,7 @@ class LearningSwitch (object):
 
 class l2_learning (object):
   """
-  Aguardando switches openflow .
+  Waits for OpenFlow switches to connect and makes them learning switches.
   """
   def __init__ (self, transparent):
     core.openflow.addListeners(self)
@@ -211,7 +236,7 @@ class l2_learning (object):
 
 def launch (transparent=False, hold_down=_flood_delay):
   """
-  Start  o switch L2 learning.
+  Starts an L2 learning switch.
   """
   try:
     global _flood_delay
