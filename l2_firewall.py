@@ -90,7 +90,8 @@ class LearningSwitch (object):
     # Add a Couple of Rules
     self.AddRule('00-00-00-00-00-01',EthAddr('00:00:00:00:00:01'))
     self.AddRule('00-00-00-00-00-01',EthAddr('00:00:00:00:00:02'))
-
+    self.AddRule('00-00-00-00-00-01',EthAddr('00:00:00:00:00:03'))
+    
     # We want to hear PacketIn messages, so we listen
     # to the connection
     connection.addListeners(self)
